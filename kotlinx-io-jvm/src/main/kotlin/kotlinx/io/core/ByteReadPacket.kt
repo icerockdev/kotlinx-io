@@ -20,7 +20,7 @@ actual abstract class ByteReadPacketPlatformBase protected actual constructor(he
 
     override fun readAvailable(dst: ByteBuffer, length: Int): Int {
         val remaining = remaining
-        if (remaining == 0L) return -1
+        if (remaining == 0L) return 0
         val size = minOf(dst.remaining().toLong(), length.toLong(), remaining).toInt()
         readFully(dst, size)
         return size
