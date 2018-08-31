@@ -52,7 +52,7 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
     protected val writable = BytePacketBuilder(0)
     protected val readable = ByteReadPacket(initial, IoBuffer.Pool)
 
-    internal val notFull = Condition { totalPending() <= 4088L }
+    internal val notFull = Condition { totalPending() < 4088L }
 
     private var waitingForSize = 1
     private val atLeastNBytesAvailableForWrite = Condition { availableForWrite >= waitingForSize || closed }
@@ -465,9 +465,9 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
 
         completeReading()
 
-        return if (availableForRead < atLeast) {
-            awaitSuspend(atLeast)
-        } else !isClosedForRead
+        if (availableForRead < atLeast) {
+            return awaitSuspend(atLeast)
+        } else return !isClosedForRead
     }
 
     protected suspend fun awaitSuspend(atLeast: Int): Boolean {
@@ -562,6 +562,8 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
     }
 
     final override fun close(cause: Throwable?): Boolean {
+        flush() // TODO non-thread-safe!!!
+
         if (closed || closedCause != null) return false
         closedCause = cause
         closed = true
