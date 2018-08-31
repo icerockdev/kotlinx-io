@@ -2,6 +2,7 @@ package kotlinx.coroutines.experimental.io
 
 import java.util.concurrent.atomic.*
 import kotlin.coroutines.*
+import kotlin.coroutines.intrinsics.*
 import kotlin.jvm.*
 
 internal actual class Condition actual constructor(val predicate: () -> Boolean) {
@@ -21,23 +22,24 @@ internal actual class Condition actual constructor(val predicate: () -> Boolean)
         }
     }
 
-
-    actual suspend fun await(block: () -> Unit) {
+    actual suspend inline fun await(crossinline block: () -> Unit) {
         if (predicate()) return
 
-        return suspendCoroutine { c ->
+        return suspendCoroutineUninterceptedOrReturn { c ->
             if (!updater.compareAndSet(this, null, c)) throw IllegalStateException()
-            if (predicate() && updater.compareAndSet(this, c, null)) c.resume(Unit)
+            if (predicate() && updater.compareAndSet(this, c, null)) return@suspendCoroutineUninterceptedOrReturn Unit //c.resume(Unit)
             block()
+            COROUTINE_SUSPENDED
         }
     }
 
-    actual suspend fun await() {
+    actual suspend inline fun await() {
         if (predicate()) return
 
-        return suspendCoroutine { c ->
+        return suspendCoroutineUninterceptedOrReturn { c ->
             if (!updater.compareAndSet(this, null, c)) throw IllegalStateException()
-            if (predicate() && updater.compareAndSet(this, c, null)) c.resume(Unit)
+            if (predicate() && updater.compareAndSet(this, c, null)) return@suspendCoroutineUninterceptedOrReturn Unit // c.resume(Unit)
+            COROUTINE_SUSPENDED
         }
     }
 
