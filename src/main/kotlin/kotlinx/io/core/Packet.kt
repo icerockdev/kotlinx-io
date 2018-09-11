@@ -8,11 +8,16 @@ import kotlinx.io.pool.*
  * but creates a new view instead. Once packet created it should be either completely read (consumed) or released
  * via [release].
  */
-abstract class ByteReadPacketBase(@PublishedApi internal var head: IoBuffer,
-                                  remaining: Long = head.remainingAll(),
-                                  val pool: ObjectPool<IoBuffer>) : Input {
-
+abstract class ByteReadPacketBase constructor(val pool: ObjectPool<IoBuffer>) : Input {
     final override var byteOrder: ByteOrder = ByteOrder.BIG_ENDIAN
+
+    @PublishedApi
+    internal abstract var headRemaining: Int
+
+    protected abstract val tailRemaining: Long
+
+    @PublishedApi
+    internal abstract var head: IoBuffer
 
     /**
      * Number of bytes available for read
@@ -32,10 +37,11 @@ abstract class ByteReadPacketBase(@PublishedApi internal var head: IoBuffer,
      */
     fun hasBytes(n: Int) = headRemaining + tailRemaining >= n
 
-    @PublishedApi
-    internal var headRemaining = head.readRemaining
-
-    private var tailRemaining: Long = remaining - headRemaining
+    /**
+     * @return `true` if there are at least [n] bytes available for concurrent-safe reading
+     */
+    @DangerousInternalIoApi
+    fun hasFastpathBytes(n: Int) = headRemaining > n
 
     /**
      * `true` if no bytes available for read
@@ -47,6 +53,7 @@ abstract class ByteReadPacketBase(@PublishedApi internal var head: IoBuffer,
         get() = headRemaining > 0 || tailRemaining > 0L
 
     private var noMoreChunksAvailable = false
+
     override val endOfInput: Boolean
         get() = isEmpty && (noMoreChunksAvailable || doFill() == null)
 
@@ -54,23 +61,13 @@ abstract class ByteReadPacketBase(@PublishedApi internal var head: IoBuffer,
      * Returns a copy of the packet. The original packet and the copy could be used concurrently. Both need to be
      * either completely consumed or released via [release]
      */
-    fun copy(): ByteReadPacket = ByteReadPacket(head.copyAll(), remaining, pool)
+    open fun copy(): ByteReadPacket = ByteReadPacket(head.copyAll(), remaining, pool)
 
     /**
      * Release packet. After this function invocation the packet becomes empty. If it has been copied via [copy]
      * then the copy should be released as well.
      */
-    fun release() {
-        val head = head
-        val empty = IoBuffer.Empty
-
-        if (head !== empty) {
-            this.head = empty
-            headRemaining = 0
-            tailRemaining = 0
-            head.releaseAll(pool)
-        }
-    }
+    abstract fun release()
 
     override fun close() {
         release()
@@ -80,63 +77,11 @@ abstract class ByteReadPacketBase(@PublishedApi internal var head: IoBuffer,
         closeSource()
     }
 
-    internal fun stealAll(): IoBuffer? {
-        val head = head
-        val empty = IoBuffer.Empty
+    @DangerousInternalIoApi
+    internal abstract fun stealAll(): IoBuffer?
 
-        if (head === empty) return null
-        this.head = empty
-        headRemaining = 0
-        tailRemaining = 0
-        return head
-    }
-
-    internal fun steal(): IoBuffer? {
-        val head = head
-        val next = head.next
-        val empty = IoBuffer.Empty
-        if (head === empty) return null
-
-        val nextRemaining = next?.readRemaining ?: 0
-
-        this.head = next ?: empty
-        this.headRemaining = nextRemaining
-        this.tailRemaining -= nextRemaining
-        head.next = null
-
-        return head
-    }
-
-    internal fun append(chain: IoBuffer) {
-        if (chain === IoBuffer.Empty) return
-
-        val size = chain.remainingAll()
-        if (head === IoBuffer.Empty) {
-            head = chain
-            headRemaining = chain.readRemaining
-            tailRemaining = size - headRemaining
-        } else {
-            head.findTail().next = chain
-            tailRemaining += size
-        }
-        chain.byteOrder = byteOrder
-    }
-
-    internal fun tryWriteAppend(chain: IoBuffer): Boolean {
-        val tail = head.findTail()
-        val size = chain.readRemaining
-
-        if (size == 0 || tail.writeRemaining < size) return false
-        tail.writeBufferAppend(chain, size)
-
-        if (head === tail) {
-            headRemaining += size
-        } else {
-            tailRemaining += size
-        }
-
-        return true
-    }
+    @DangerousInternalIoApi
+    internal abstract fun steal(): IoBuffer?
 
     final override fun readByte(): Byte {
         val headRemaining = headRemaining
@@ -384,14 +329,21 @@ abstract class ByteReadPacketBase(@PublishedApi internal var head: IoBuffer,
      * Returns next byte (unsigned) or `-1` if no more bytes available
      */
     final override fun tryPeek(): Int {
-        val head = head
-        if (headRemaining > 0) {
+        if (headRemaining > 1) {
             return head.tryPeek()
         }
 
-        if (tailRemaining == 0L && noMoreChunksAvailable) return -1
+        return tryPeekSlow()
+    }
 
-        return prepareRead(1, head)?.tryPeek() ?: -1
+    private fun tryPeekSlow(): Int {
+        if (tailRemaining == 0L && noMoreChunksAvailable) return -1
+        val head = prepareRead(1) ?: return -1
+        val value = head.tryPeek()
+        if (!head.canRead()) {
+            releaseHead(head)
+        }
+        return value
     }
 
     final override fun discard(n: Long): Long {
@@ -413,8 +365,7 @@ abstract class ByteReadPacketBase(@PublishedApi internal var head: IoBuffer,
                 if (csq is String) {
                     csq.getCharsInternal(cbuf, idx)
                     idx += csq.length
-                }
-                else if (csq != null) {
+                } else if (csq != null) {
                     for (i in 0 until csq.length) {
                         cbuf[idx++] = csq[i]
                     }
@@ -507,14 +458,18 @@ abstract class ByteReadPacketBase(@PublishedApi internal var head: IoBuffer,
         return copied
     }
 
-    private fun atLeastMinCharactersRequire(min: Int): Nothing = throw EOFException("at least $min characters required but no bytes available")
+    private fun atLeastMinCharactersRequire(min: Int): Nothing =
+        throw EOFException("at least $min characters required but no bytes available")
 
-    private fun minShouldBeLess(min: Int, max: Int): Nothing = throw IllegalArgumentException("min should be less or equal to max but min = $min, max = $max")
+    private fun minShouldBeLess(min: Int, max: Int): Nothing =
+        throw IllegalArgumentException("min should be less or equal to max but min = $min, max = $max")
 
     private fun prematureEndOfStreamChars(min: Int, copied: Int): Nothing = throw MalformedUTF8InputException(
         "Premature end of stream: expected at least $min chars but had only $copied"
     )
-    private fun prematureEndOfStream(size: Int): Nothing = throw MalformedUTF8InputException("Premature end of stream: expected $size bytes")
+
+    private fun prematureEndOfStream(size: Int): Nothing =
+        throw MalformedUTF8InputException("Premature end of stream: expected $size bytes")
 
     private fun readUtf8(out: Appendable, min: Int, max: Int): Int {
         var copied = 0
@@ -591,43 +546,16 @@ abstract class ByteReadPacketBase(@PublishedApi internal var head: IoBuffer,
         headRemaining = remaining
     }
 
-    @Deprecated("Non-public API", level = DeprecationLevel.ERROR)
+    @DangerousInternalIoApi
     final override fun `$prepareRead$`(minSize: Int): IoBuffer? = prepareRead(minSize, head)
 
-    @Deprecated("Non public API", level = DeprecationLevel.ERROR)
+    @DangerousInternalIoApi
     final override fun `$ensureNext$`(current: IoBuffer): IoBuffer? = ensureNext(current)
 
     @PublishedApi
     internal fun ensureNext(current: IoBuffer) = ensureNext(current, IoBuffer.Empty)
 
-    private tailrec fun ensureNext(current: IoBuffer, empty: IoBuffer): IoBuffer? {
-        val next = if (current === empty) {
-            doFill()
-        } else {
-            current.next.also { current.release(pool) } ?: doFill()
-        }
-
-        if (next == null) {
-            if (head !== empty) {
-                head = empty
-                headRemaining = 0
-                tailRemaining = 0L
-            }
-
-            return null
-        }
-
-        if (next.canRead()) {
-            head = next
-            next.byteOrder = byteOrder
-            val nextRemaining = next.readRemaining
-            headRemaining = nextRemaining
-            tailRemaining -= nextRemaining
-            return next
-        } else {
-            return ensureNext(next, empty)
-        }
-    }
+    protected abstract fun ensureNext(current: IoBuffer, empty: IoBuffer): IoBuffer?
 
     /**
      * Reads the next chunk suitable for reading or `null` if no more chunks available
@@ -643,63 +571,24 @@ abstract class ByteReadPacketBase(@PublishedApi internal var head: IoBuffer,
             noMoreChunksAvailable = true
             return null
         }
-        appendView(chunk)
+        appendChain(chunk)
         return chunk
     }
 
-    internal fun appendView(chunk: IoBuffer) {
-        val tail = head.findTail()
-        if (tail === IoBuffer.Empty) {
-            head = chunk
-            chunk.byteOrder = byteOrder
-            require(tailRemaining == 0L) { throw IllegalStateException("It should be no tail remaining bytes if current tail is EmptyBuffer") }
-            headRemaining = chunk.readRemaining
-            tailRemaining = chunk.next?.remainingAll() ?: 0L
-        } else {
-            tail.next = chunk
-            tailRemaining += chunk.remainingAll()
-        }
-    }
+    @DangerousInternalIoApi
+    abstract fun appendChain(chain: IoBuffer)
 
     @Suppress("NOTHING_TO_INLINE")
     internal inline fun prepareRead(minSize: Int): IoBuffer? = prepareRead(minSize, head)
 
     @PublishedApi
-    internal tailrec fun prepareRead(minSize: Int, head: IoBuffer): IoBuffer? {
-        val headSize = headRemaining
-        if (headSize >= minSize) return head
-
-        val next = head.next ?: doFill() ?: return null
-        next.byteOrder = byteOrder
-
-        if (headSize == 0) {
-            if (head !== IoBuffer.Empty) {
-                releaseHead(head)
-            }
-
-            return prepareRead(minSize, next)
-        } else {
-            val before = next.readRemaining
-            head.writeBufferAppend(next, minSize - headSize)
-            val after = next.readRemaining
-            headRemaining = head.readRemaining
-            tailRemaining -= before - after
-            if (after == 0) {
-                head.next = next.next
-                next.release(pool)
-            }
-        }
-
-        if (head.readRemaining >= minSize) return head
-        if (minSize > ReservedSize) minSizeIsTooBig(minSize)
-
-        return prepareRead(minSize, head)
-    }
+    internal abstract fun prepareRead(minSize: Int, head: IoBuffer): IoBuffer?
 
     private fun minSizeIsTooBig(minSize: Int): Nothing {
         throw IllegalStateException("minSize of $minSize is too big (should be less than $ReservedSize")
     }
 
+    @Deprecated("")
     private fun afterRead() {
         val head = head
         if (head.readRemaining == 0) {
@@ -707,14 +596,7 @@ abstract class ByteReadPacketBase(@PublishedApi internal var head: IoBuffer,
         }
     }
 
-    internal fun releaseHead(head: IoBuffer) {
-        val next = head.next ?: IoBuffer.Empty
-        this.head = next
-        val nextRemaining = next.readRemaining
-        this.headRemaining = nextRemaining
-        this.tailRemaining -= nextRemaining
-        head.release(pool)
-    }
+    internal abstract fun releaseHead(head: IoBuffer)
 
     companion object {
         val Empty: ByteReadPacket = ByteReadPacket(IoBuffer.Empty, object : NoPoolImpl<IoBuffer>() {

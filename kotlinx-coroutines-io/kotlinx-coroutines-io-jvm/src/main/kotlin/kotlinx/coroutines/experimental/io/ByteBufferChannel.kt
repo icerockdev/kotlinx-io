@@ -163,23 +163,22 @@ internal class ByteBufferChannel(
             throw IllegalStateException("Write operation is already in progress: $existing")
         }
 
-        var _allocated: ReadWriteBufferState.Initial? = null
+        var allocated: ReadWriteBufferState.Initial? = null
         val (old, newState) = updateState { state ->
             when {
                 joining != null -> {
-                    _allocated?.let { releaseBuffer(it) }
+                    allocated?.let { releaseBuffer(it) }
                     return null
                 }
                 closed != null -> {
-                    _allocated?.let { releaseBuffer(it) }
+                    allocated?.let { releaseBuffer(it) }
                     throw closed!!.sendException
                 }
                 state === ReadWriteBufferState.IdleEmpty -> {
-                    val allocated = _allocated ?: newBuffer().also { _allocated = it }
-                    allocated.startWriting()
+                    (allocated ?: newBuffer().also { allocated = it }).startWriting()
                 }
                 state === ReadWriteBufferState.Terminated -> {
-                    _allocated?.let { releaseBuffer(it) }
+                    allocated?.let { releaseBuffer(it) }
                     if (joining != null) return null
                     throw closed!!.sendException
                 }
@@ -196,9 +195,9 @@ internal class ByteBufferChannel(
 
         val buffer = newState.writeBuffer
 
-        _allocated?.let { allocated ->
+        allocated?.let { it ->
             if (old !== ReadWriteBufferState.IdleEmpty) {
-                releaseBuffer(allocated)
+                releaseBuffer(it)
             }
         }
         return buffer.apply {

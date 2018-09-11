@@ -2,6 +2,7 @@
 
 package kotlinx.io.core
 
+import kotlinx.io.core.internal.*
 import kotlinx.io.internal.jvm.*
 import kotlinx.io.pool.*
 import kotlinx.io.utils.*
@@ -51,7 +52,29 @@ actual class IoBuffer private constructor(
     /**
      * Mutable reference to next buffer view. Useful to chain multiple views
      */
+    @Volatile
     actual var next: IoBuffer? = null
+        set(newValue) {
+            @UseExperimental(DangerousInternalIoApi::class)
+            if (!trySetNext(newValue)) throw IllegalStateException("next reference is already set")
+        }
+
+    @DangerousInternalIoApi
+    actual fun trySetNext(newValue: IoBuffer?): Boolean {
+        do {
+            val old = next
+            if (old === newValue) return true
+            if (old != null && newValue != null) return false
+            if (old == null && newValue == null) return true
+
+            if (nextUpdater.compareAndSet(this, old, newValue)) return true
+        } while (true)
+    }
+
+    @Volatile
+    private var lock: VersionedLock = VersionedLock()
+
+    actual val locked: Boolean get() = lock.locked
 
     /**
      * User data: could be a session, connection or anything useful
@@ -694,7 +717,7 @@ actual class IoBuffer private constructor(
     actual fun isExclusivelyOwned(): Boolean = refCount == 1L
 
     /**
-     * Creates a new view to the same actual buffer with independant read and write positions and gaps
+     * Creates a new view to the same actual buffer with independent read and write positions and gaps
      */
     actual fun makeView(): IoBuffer {
         val newOrigin = origin ?: this
@@ -864,6 +887,24 @@ actual class IoBuffer private constructor(
         }
     }
 
+    actual fun markLocked(): Boolean {
+        while (true) {
+            val lock = lock
+            if (lock.locked) return false
+            val newState = lock.locked()
+            if (IoBuffer.lockUpdater.compareAndSet(this, lock.value, newState.value)) return true
+        }
+    }
+
+    actual fun markUnlocked() {
+        while (true) {
+            val ic = lock
+            if (!ic.locked) throw java.lang.IllegalStateException("Not locked")
+            val newState = ic.unlocked()
+            if (IoBuffer.lockUpdater.compareAndSet(this, ic.value, newState.value)) break
+        }
+    }
+
     @PublishedApi
     @Suppress("NOTHING_TO_INLINE")
     internal inline fun afterWrite() {
@@ -871,6 +912,10 @@ actual class IoBuffer private constructor(
     }
 
     actual companion object {
+        private val lockUpdater = AtomicIntegerFieldUpdater.newUpdater(IoBuffer::class.java, IoBuffer::lock.name)!!
+        private val nextUpdater: AtomicReferenceFieldUpdater<IoBuffer, IoBuffer?> =
+            AtomicReferenceFieldUpdater.newUpdater(IoBuffer::class.java, IoBuffer::class.java, IoBuffer::next.name)
+
         private val EmptyBuffer: ByteBuffer = ByteBuffer.allocateDirect(0)
         private val RefCount = AtomicLongFieldUpdater.newUpdater(IoBuffer::class.java, IoBuffer::refCount.name)!!
 
@@ -906,6 +951,7 @@ actual class IoBuffer private constructor(
             override fun validateInstance(instance: IoBuffer) {
                 require(instance.refCount == 0L) { "Buffer is not yet released but tried to recycle" }
                 require(instance.origin == null) { "Unable to recycle buffer view, only origin buffers are applicable" }
+                require(!instance.locked) { "Instance is still locked" }
             }
         }
 
@@ -920,5 +966,7 @@ actual class IoBuffer private constructor(
         }
 
         actual val EmptyPool: ObjectPool<IoBuffer> = EmptyBufferPoolImpl
+
+        internal actual fun makeDummy(): IoBuffer = IoBuffer(EmptyBuffer)
     }
 }

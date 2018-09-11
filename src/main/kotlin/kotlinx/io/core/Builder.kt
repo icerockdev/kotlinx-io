@@ -1,7 +1,7 @@
 package kotlinx.io.core
 
+import kotlinx.io.core.internal.*
 import kotlinx.io.pool.*
-import kotlinx.io.core.internal.require
 
 expect val PACKET_MAX_COPY_SIZE: Int
 
@@ -151,7 +151,8 @@ class BytePacketBuilder(private var headerSizeHint: Int, pool: ObjectPool<IoBuff
      * Detach all chunks and cleanup all internal state so builder could be reusable again
      * @return a chain of buffer views or `null` of it is empty
      */
-    internal fun stealAll(): IoBuffer? {
+    @DangerousInternalIoApi
+    fun stealAll(): IoBuffer? {
         val head = this.head
         val empty = IoBuffer.Empty
 
@@ -175,6 +176,11 @@ class BytePacketBuilder(private var headerSizeHint: Int, pool: ObjectPool<IoBuff
      * Writes another packet to the end. Please note that the instance [p] gets consumed so you don't need to release it
      */
     override fun writePacket(p: ByteReadPacket) {
+        writePacketLike(p)
+    }
+
+    @DangerousInternalIoApi
+    fun writePacketLike(p: ByteReadPacketBase) {
         val foreignStolen = p.stealAll()
         if (foreignStolen == null) {
             p.release()
@@ -192,7 +198,7 @@ class BytePacketBuilder(private var headerSizeHint: Int, pool: ObjectPool<IoBuff
         writePacketSlow(tail, foreignStolen, p)
     }
 
-    private fun writePacketSlow(tail: IoBuffer, foreignStolen: IoBuffer, p: ByteReadPacket) {
+    private fun writePacketSlow(tail: IoBuffer, foreignStolen: IoBuffer, p: ByteReadPacketBase) {
         val lastSize = tail.readRemaining
         val nextSize = foreignStolen.readRemaining
 
@@ -486,6 +492,14 @@ abstract class BytePacketBuilderBase internal constructor(protected val pool: Ob
      * Write exact [n] bytes from packet to the builder
      */
     fun writePacket(p: ByteReadPacket, n: Int) {
+        writePacketLike(p, n)
+    }
+
+    /**
+     * Write exact [n] bytes from packet to the builder
+     */
+    @DangerousInternalIoApi
+    fun writePacketLike(p: ByteReadPacketBase, n: Int) {
         var remaining = n
 
         while (remaining > 0) {

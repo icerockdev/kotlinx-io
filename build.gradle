@@ -77,6 +77,14 @@ allprojects {
                 }
             }
         }
+    } else if (platform == 'common') {
+        compileKotlinCommon {
+            kotlinOptions.freeCompilerArgs = ['-Xuse-experimental=kotlin.Experimental,kotlinx.io.core.internal.DangerousInternalIoApi']
+        }
+    } else if (platform == 'jvm') {
+        compileKotlin {
+            kotlinOptions.freeCompilerArgs = ['-Xuse-experimental=kotlin.Experimental,kotlinx.io.core.internal.DangerousInternalIoApi']
+        }
     }
 
     if (project.hasProperty('releaseVersion')) {

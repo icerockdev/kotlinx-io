@@ -1,5 +1,6 @@
 package kotlinx.io.core
 
+import kotlinx.io.core.internal.*
 import kotlinx.io.pool.*
 
 @Deprecated("Use IoBuffer instead", replaceWith = ReplaceWith("IoBuffer", "kotlinx.io.core.IoBuffer"))
@@ -20,6 +21,21 @@ expect class IoBuffer : Input, Output {
      * Mutable reference to next buffer view. Useful to chain multiple views
      */
     var next: IoBuffer?
+
+    @DangerousInternalIoApi
+    fun casNext(oldValue: IoBuffer?, newValue: IoBuffer): Boolean
+
+    @DangerousInternalIoApi
+    fun trySetNext(newValue: IoBuffer?): Boolean
+
+    fun getAndSetNext(dummy: IoBuffer?): IoBuffer?
+
+    /**
+     * If the chain is marked as locked. Useful for synchronization
+     */
+    val locked: Boolean
+
+    val lockVersion: Int
 
     /**
      * User data: could be a session, connection or anything useful
@@ -202,11 +218,25 @@ expect class IoBuffer : Input, Output {
 
     final override fun flush()
 
+    fun markLocked(): Boolean
+    fun markLocked(v: Int): Boolean
+    fun markUnlocked()
+
     companion object {
         val Empty: IoBuffer
+
         val Pool: ObjectPool<IoBuffer>
         val NoPool: ObjectPool<IoBuffer>
+
+        /**
+         * A pool that always returns [IoBuffer.Empty]
+         */
         val EmptyPool: ObjectPool<IoBuffer>
+
+        /**
+         * Creates a new dummy buffer that is always empty. Unlike IoBuffer.Empty it is not shared.
+         */
+        internal fun makeDummy(): IoBuffer
     }
 }
 

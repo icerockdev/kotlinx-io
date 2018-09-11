@@ -4,7 +4,7 @@ import kotlinx.io.pool.*
 import org.khronos.webgl.*
 
 actual abstract class ByteReadPacketPlatformBase
-    protected actual constructor(head: IoBuffer, remaining: Long, pool: ObjectPool<IoBuffer>) : ByteReadPacketBase(head, remaining, pool), Input {
+    protected actual constructor(pool: ObjectPool<IoBuffer>) : ByteReadPacketBase(pool), Input {
 
     override fun readFully(dst: Int8Array, offset: Int, length: Int) {
         if (remaining < length) throw IllegalArgumentException("Not enough bytes available ($remaining) to read $length bytes")
@@ -69,7 +69,7 @@ actual abstract class ByteReadPacketPlatformBase
 }
 
 actual class ByteReadPacket
-    internal actual constructor(head: IoBuffer, remaining: Long, pool: ObjectPool<IoBuffer>) : ByteReadPacketPlatformBase(head, remaining, pool), Input {
+    internal actual constructor(head: IoBuffer, remaining: Long, pool: ObjectPool<IoBuffer>) : NonConcurrentByteReadPacketBase(head, remaining, pool), Input {
     actual constructor(head: IoBuffer, pool: ObjectPool<IoBuffer>) : this(head, head.remainingAll(), pool)
 
     final override fun fill() = null
