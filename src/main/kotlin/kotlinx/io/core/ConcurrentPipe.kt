@@ -36,6 +36,7 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
 
     fun readIntExample(): Int {
         if (headRemaining > 4) {
+            headRemaining -= 4
             return head.readInt()
         }
 
@@ -45,7 +46,9 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
     private fun readIntSlow(): Int {
         val next = ensureNext(4) ?: throw EOFException("Not enough bytes available to read 4 bytes")
         val value = next.readInt()
-        if (next.isEmpty()) {
+        if (next.canRead()) {
+            headRemaining -= 4
+        } else {
             releaseHead(next)
         }
         return value
