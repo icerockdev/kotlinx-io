@@ -419,6 +419,8 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
                 // therefore headRemaining is associated with head and tail
                 // as long as we hold tail's lock
                 headRemaining += size // this is why it is safe to modify headRemaining here
+            } else {
+                tailRemainingAtomic.addAndGet(size.toLong())
             }
         } finally {
             tail.markUnlocked()
