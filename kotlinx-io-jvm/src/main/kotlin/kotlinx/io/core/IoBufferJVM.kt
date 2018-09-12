@@ -71,6 +71,18 @@ actual class IoBuffer private constructor(
         } while (true)
     }
 
+    @DangerousInternalIoApi
+    actual fun casNext(oldValue: IoBuffer?, newValue: IoBuffer): Boolean {
+        return nextUpdater.compareAndSet(this, oldValue, newValue)
+    }
+
+    actual fun getAndSetNext(dummy: IoBuffer?): IoBuffer? {
+        return nextUpdater.getAndSet(this, dummy)
+    }
+
+    actual val lockVersion: Int get() = lock.version
+
+
     @Volatile
     private var lock: VersionedLock = VersionedLock()
 
@@ -891,6 +903,16 @@ actual class IoBuffer private constructor(
         while (true) {
             val lock = lock
             if (lock.locked) return false
+            val newState = lock.locked()
+            if (IoBuffer.lockUpdater.compareAndSet(this, lock.value, newState.value)) return true
+        }
+    }
+
+    actual fun markLocked(v: Int): Boolean {
+        while (true) {
+            val lock = lock
+            if (lock.locked) return false
+            if (lock.version != v) return false
             val newState = lock.locked()
             if (IoBuffer.lockUpdater.compareAndSet(this, lock.value, newState.value)) return true
         }
