@@ -197,7 +197,7 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
                     startNext == null -> "Chunk is already recycled"
                     // it is safe because tail != dummy
                     // only reader could change it
-                    !dummy.casNext(start, dummy) -> "Concurrent read access"
+                    !dummy.casNext(startNext, dummy) -> "Concurrent read access"
                     else -> {
                         start = startNext
                         null
@@ -214,7 +214,7 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
             // unlock and increment version so end is completely free and we own it exclusively after it
             end.markUnlocked()
 
-            if (end !== start) {
+            if (end !== start && this.head === start) {
                 // unlock head as well, now we can use it with no risk
                 start.markUnlocked()
             }
@@ -228,9 +228,12 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
             this.tailRemainingAtomic.addAndGet(-size)
 
             // concat chains
-            tail.next = start
+            if (head === dummy) {
+                head = start
+            } else {
+                tail.next = start
+            }
             tail = end
-            if (head === dummy) head = start
 
             // fix head and headRemaining
             this.head = dummy // at this point dummy could be already modified
