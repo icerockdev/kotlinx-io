@@ -58,6 +58,9 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
 
     private fun detachHeadNonDummy(head: IoBuffer) {
         kotlinx.io.core.internal.require(head.locked) { "Only locked instances could be released" }
+        kotlinx.io.core.internal.require(this.head === head) {
+            "Only head chunks could be released using this function"
+        }
 
         val next = head.getAndSetNext(null) ?: error("It should be never null next")
         if (next === dummy) { // tail
@@ -93,7 +96,9 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
 
             // since there is one more chunk then we are sure that tail != dummy
             // so only reader can update dummy.next (nobody else)
-            if (!dummy.casNext(head, next)) {
+            // as far as we know that head !== dummy then we are also sure that dummy.next = dummy
+            // otherwise we likely have concurrent read access or something else is broken
+            if (!dummy.casNext(dummy, next)) {
                 throw AssertionError("Concurrent read access")
             }
 
