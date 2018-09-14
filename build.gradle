@@ -85,6 +85,10 @@ allprojects {
         compileKotlin {
             kotlinOptions.freeCompilerArgs = ['-Xuse-experimental=kotlin.Experimental,kotlinx.io.core.internal.DangerousInternalIoApi']
         }
+    } else if (platform == 'js') {
+        compileKotlin2Js {
+            kotlinOptions.freeCompilerArgs = ['-Xuse-experimental=kotlin.Experimental,kotlinx.io.core.internal.DangerousInternalIoApi']
+        }
     }
 
     if (project.hasProperty('releaseVersion')) {
