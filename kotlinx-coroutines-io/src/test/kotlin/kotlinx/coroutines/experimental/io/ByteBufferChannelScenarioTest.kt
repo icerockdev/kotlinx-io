@@ -340,7 +340,7 @@ open class ByteBufferChannelScenarioTest : ByteChannelTestBase(true) {
 
     @Test
     fun testWriteShortSuspend() = runTest {
-        launch {
+        launch("writer") {
             expect(1)
             ch.writeByte(1)
             ch.writeFully(ByteArray(ch.availableForWrite))

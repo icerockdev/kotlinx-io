@@ -18,12 +18,20 @@ abstract class ByteChannelTestBase(autoFlush: Boolean = false) {
     }
 
     protected fun runTest(block: suspend () -> Unit) {
-        coroutines.schedule(block)
-        coroutines.run()
+        coroutines.launch("test-root", block)
+        try {
+            coroutines.run()
+        } catch (t: Throwable) {
+            throw RuntimeException("Test failed (state = $current)", t)
+        }
+    }
+
+    protected fun launch(name: String, block: suspend () -> Unit) {
+        coroutines.launch(name, block)
     }
 
     protected fun launch(block: suspend () -> Unit) {
-        coroutines.schedule(block)
+        coroutines.launch(block)
     }
 
     protected suspend fun yield() {

@@ -5,14 +5,14 @@ import kotlin.coroutines.*
 class DummyCoroutines {
     private var failure: Throwable? = null
     private val queue = ArrayList<Task<*>>()
-    private var liveCoroutines = 0
+    private val liveCoroutines = HashSet<CoroutineHead>()
 
-    private inner class Completion : Continuation<Unit> {
+    private inner class Completion(val head: CoroutineHead) : Continuation<Unit> {
         override val context: CoroutineContext
-            get() = EmptyCoroutineContext
+            get() = head
 
         override fun resumeWith(result: Result<Unit>) {
-            liveCoroutines--
+            liveCoroutines.remove(head)
             failure = result.exceptionOrNull()
             if (result.isSuccess) {
                 process()
@@ -20,16 +20,21 @@ class DummyCoroutines {
         }
     }
 
-    private val completion = Completion()
-
-    fun schedule(c: Continuation<Unit>) {
+    private fun launch(c: Continuation<Unit>) {
         ensureNotFailed()
-        liveCoroutines++
+        val name = c.context[CoroutineHead]!!
+        liveCoroutines.add(name)
+
         queue += Task.Resume(c, Unit)
     }
 
-    fun schedule(block: suspend () -> Unit) {
-        schedule(block.createCoroutine(completion))
+    fun launch(name: String, block: suspend () -> Unit) {
+        val head = CoroutineHead(name)
+        launch(block.createCoroutine(Completion(head)))
+    }
+
+    fun launch(block: suspend () -> Unit) {
+        launch(block.toString(), block)
     }
 
     suspend fun yield() {
@@ -40,13 +45,15 @@ class DummyCoroutines {
     }
 
     fun run() {
-        if (liveCoroutines == 0) throw IllegalStateException("No coroutines has been scheduled")
+        if (liveCoroutines.isEmpty()) throw IllegalStateException("No coroutines has been scheduled")
         ensureNotFailed()
 
         process()
         failure?.let { throw it }
-        if (liveCoroutines > 0) {
-            throw IllegalStateException("There are suspended coroutines remaining: $liveCoroutines")
+        if (liveCoroutines.isNotEmpty()) {
+            throw IllegalStateException("There are suspended coroutines remaining: ${liveCoroutines.size}:\n" +
+                    liveCoroutines.joinToString("\n") { it.name }
+            )
         }
     }
 
@@ -61,6 +68,11 @@ class DummyCoroutines {
 
     private fun ensureNotFailed() {
         failure?.let { throw it }
+    }
+
+    private class CoroutineHead(val name: String) : CoroutineContext.Element {
+        override val key = Key
+        companion object Key : CoroutineContext.Key<CoroutineHead>
     }
 
     private sealed class Task<T>(val c: Continuation<T>) {
