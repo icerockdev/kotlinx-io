@@ -958,25 +958,25 @@ actual class IoBuffer internal constructor(
         }
     }
 
-    @Deprecated("Non-public API. Use takeWhile or takeWhileSize instead", level = DeprecationLevel.ERROR)
+    @DangerousInternalIoApi
     actual final override fun `$updateRemaining$`(remaining: Int) {
     }
 
-    @Deprecated("Non-public API. Use takeWhile or takeWhileSize instead", level = DeprecationLevel.ERROR)
+    @DangerousInternalIoApi
     actual final override fun `$ensureNext$`(current: IoBuffer): IoBuffer? {
         return null
     }
 
-    @Deprecated("Non-public API. Use takeWhile or takeWhileSize instead", level = DeprecationLevel.ERROR)
+    @DangerousInternalIoApi
     actual final override fun `$prepareRead$`(minSize: Int): IoBuffer? {
         return if (readRemaining >= minSize) this else null
     }
 
-    @Deprecated("Non-public API. Use takeWhile or takeWhileSize instead", level = DeprecationLevel.ERROR)
+    @DangerousInternalIoApi
     actual final override fun `$afterWrite$`() {
     }
 
-    @Deprecated("Non-public API. Use takeWhile or takeWhileSize instead", level = DeprecationLevel.ERROR)
+    @DangerousInternalIoApi
     actual final override fun `$prepareWrite$`(n: Int): IoBuffer {
         if (writeRemaining >= n) return this
         throw IllegalArgumentException("Not enough space in the chunk")

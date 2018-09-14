@@ -541,7 +541,7 @@ abstract class ByteReadPacketBase constructor(val pool: ObjectPool<IoBuffer>) : 
         throw EOFException("Not enough data in packet ($remaining) to read $n byte(s)")
     }
 
-    @Deprecated("Non-public API. Do not use otherwise packet could be damaged", level = DeprecationLevel.ERROR)
+    @DangerousInternalIoApi
     final override fun `$updateRemaining$`(remaining: Int) {
         headRemaining = remaining
     }

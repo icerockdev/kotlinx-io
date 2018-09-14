@@ -29,10 +29,10 @@ actual interface Output : Appendable, Closeable {
     actual fun flush()
     actual override fun close()
 
-    @Deprecated("Non-public API. Use writeWhile instead", level = DeprecationLevel.ERROR)
+    @DangerousInternalIoApi
     actual fun `$prepareWrite$`(n: Int): IoBuffer
 
-    @Deprecated("Non-public API. Use writeWhile instead", level = DeprecationLevel.ERROR)
+    @DangerousInternalIoApi
     actual fun `$afterWrite$`()
 }
 

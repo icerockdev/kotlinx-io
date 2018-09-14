@@ -621,6 +621,7 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
 
             if (readable.hasBytes(n)) {
                 if (!readable.hasFastpathBytes(n)) {
+                    @UseExperimental(DangerousInternalIoApi::class)
                     if (readable.`$prepareRead$`(n) == null) {
                         continue
                     }
