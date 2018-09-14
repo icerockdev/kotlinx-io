@@ -15,8 +15,7 @@ abstract class ByteReadPacketBase constructor(val pool: ObjectPool<IoBuffer>) : 
             head.byteOrder = newOrder
         }
 
-    @PublishedApi
-    internal abstract var headRemaining: Int
+    protected abstract var headRemaining: Int
 
     protected abstract val tailRemaining: Long
 
@@ -86,6 +85,30 @@ abstract class ByteReadPacketBase constructor(val pool: ObjectPool<IoBuffer>) : 
 
     @DangerousInternalIoApi
     internal abstract fun steal(): IoBuffer?
+
+    @DangerousInternalIoApi
+    internal fun tryPrepareContinuousRegionAtLeast(n: Int): Boolean {
+        val head = prepareRead(minOf(n, 8)) ?: return false
+        return head.readRemaining >= n
+    }
+
+    @DangerousInternalIoApi
+    internal fun tryPrepareContinuousRegionAtLeast(n: Long): Boolean {
+        val head = prepareRead(minOf(n, 8L).toInt()) ?: return false
+        return head.readRemaining >= n
+    }
+
+    @DangerousInternalIoApi
+    internal fun tryPrepareContinuousRegionAtMost(n: Int): Boolean {
+        val head = prepareRead(minOf(n, 8)) ?: return false
+        return head.readRemaining <= n
+    }
+
+    @DangerousInternalIoApi
+    internal fun tryPrepareContinuousRegionAtMost(n: Long): Boolean {
+        val head = prepareRead(minOf(n, 8L).toInt()) ?: return false
+        return head.readRemaining <= n
+    }
 
     final override fun readByte(): Byte {
         val headRemaining = headRemaining

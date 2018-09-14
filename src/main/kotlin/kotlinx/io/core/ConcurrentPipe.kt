@@ -59,6 +59,22 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
         head.release(pool)
     }
 
+    /**
+     * @return `true` if `prepareRead(1)` may succeed or it is empty
+     */
+    @DangerousInternalIoApi
+    fun canPrepareForRead(): Boolean {
+        val tail = tail.value
+        val head = head
+
+        // locked tail could mean that appender is running or we are already reading the only chunk
+        // if head == tail  then head is locked by reader so it is always safe to read
+        // as appender will not be able to start (because it requires lock)
+        return !tail.locked ||
+                tail === dummy ||
+                head === tail
+    }
+
     private fun detachHeadNonDummy(head: IoBuffer) {
         kotlinx.io.core.internal.require(head.locked) { "Only locked instances could be released" }
         kotlinx.io.core.internal.require(this.head === head) {
@@ -293,7 +309,10 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
             if (next == null) throw AssertionError("Head points to a recycled chunk?")
 
             if (next.markLocked()) {
-                dummy.getAndSetNext(dummy) // dummy head shouldn't point to next anymore
+                // dummy head shouldn't point to next anymore
+                if (!dummy.casNext(next, dummy)) {
+                    throw AssertionError("Concurrent read access detected")
+                }
 
                 this.head = next // only reader updates head
                 val size = next.readRemaining
