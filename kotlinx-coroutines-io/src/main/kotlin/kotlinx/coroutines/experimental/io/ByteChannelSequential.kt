@@ -73,7 +73,7 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
 
     private var waitingForRead = 1
     private val atLeastNBytesAvailableForRead =
-        Condition { (availableForRead >= waitingForRead && readable.hasFastpathBytes(1)) || closed }
+        Condition { (availableForRead >= waitingForRead && readable.canPrepareForRead()) || closed }
 
     @Suppress("NOTHING_TO_INLINE")
     private inline fun totalPending() = readable.remaining.toInt() + writable.size
