@@ -10,6 +10,10 @@ import kotlinx.io.pool.*
  */
 abstract class ByteReadPacketBase constructor(val pool: ObjectPool<IoBuffer>) : Input {
     final override var byteOrder: ByteOrder = ByteOrder.BIG_ENDIAN
+        set(newOrder) {
+            field = newOrder
+            head.byteOrder = newOrder
+        }
 
     @PublishedApi
     internal abstract var headRemaining: Int

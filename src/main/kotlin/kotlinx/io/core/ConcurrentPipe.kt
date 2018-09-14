@@ -290,7 +290,7 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
 
             val next = head.next
             if (next === dummy) return null
-            if (next == null) throw AssertionError("Head points to recycled chunk?")
+            if (next == null) throw AssertionError("Head points to a recycled chunk?")
 
             if (next.markLocked()) {
                 dummy.getAndSetNext(dummy) // dummy head shouldn't point to next anymore
@@ -298,6 +298,7 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
                 this.head = next // only reader updates head
                 val size = next.readRemaining
                 this.headRemaining = size // we can update it as we hold lock on it
+                next.byteOrder = this.byteOrder
 
                 // we potentially could get negative tailRemainingAtomic for a while
                 // until appendByRef will increase it soon
