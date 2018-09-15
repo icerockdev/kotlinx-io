@@ -224,7 +224,7 @@ abstract class ByteReadPacketBase constructor(val pool: ObjectPool<IoBuffer>) : 
             val after = buffer.readRemaining
             val delta = before - after
             if (delta > 0) {
-                headRemaining -= delta
+                `$updateRemaining$`(after)
             }
             if (after == 0) {
                 ensureNext(buffer)
