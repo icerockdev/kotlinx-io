@@ -29,7 +29,7 @@ suspend fun ByteChannelSequentialBase.copyTo(dst: ByteChannelSequentialBase, lim
             tail
         } else {
             if (dst.availableForWrite == 0) {
-                dst.notFull.await()
+                dst.awaitForWriteSpace(1)
             }
             transferred
         }
@@ -68,8 +68,8 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
 
     internal val notFull = Condition { totalPending() <= 4088L }
 
-    private var waitingForSize = 1
-    private val atLeastNBytesAvailableForWrite = Condition { availableForWrite >= waitingForSize || closed }
+    private var waitingForWriteSpace = 1
+    private val atLeastNBytesAvailableForWrite = Condition { availableForWrite >= waitingForWriteSpace || closed }
 
     private var waitingForRead = 1
     private val atLeastNBytesAvailableForRead =
@@ -217,7 +217,7 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
 
             override suspend fun tryAwait(n: Int) {
                 if (availableForWrite < n) {
-                    waitingForSize = n
+                    waitingForWriteSpace = n
                     atLeastNBytesAvailableForWrite.await()
                 }
             }
@@ -635,12 +635,12 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
     }
 
     private suspend fun writeAvailableSuspend(src: IoBuffer): Int {
-        awaitFreeSpace()
+        awaitForWriteSpace(1)
         return writeAvailable(src)
     }
 
     private suspend fun writeAvailableSuspend(src: ByteArray, offset: Int, length: Int): Int {
-        awaitFreeSpace()
+        awaitForWriteSpace(1)
         return writeAvailable(src, offset, length)
     }
 
@@ -654,8 +654,18 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
         }
     }
 
+    /**
+     * Use it after write but never before! To wait for write space use [awaitForWriteSpace] instead
+     */
     protected suspend fun awaitFreeSpace() {
         afterWrite()
         return notFull.await { flush() }
+    }
+
+    internal suspend fun awaitForWriteSpace(n: Int) {
+        if (availableForWrite >= n) return
+
+        waitingForWriteSpace = n
+        return atLeastNBytesAvailableForWrite.await { flush() }
     }
 }
