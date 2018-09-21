@@ -212,6 +212,9 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
             }
 
             override fun flush() {
+                @Suppress("DEPRECATION_ERROR")
+                writable.`$afterWrite$`()
+                afterWrite()
                 this@ByteChannelSequentialBase.flush()
             }
 

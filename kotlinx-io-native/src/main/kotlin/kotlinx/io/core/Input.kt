@@ -1,6 +1,7 @@
 package kotlinx.io.core
 
 import kotlinx.cinterop.*
+import kotlinx.io.core.internal.*
 
 actual interface Input : Closeable {
     actual var byteOrder: ByteOrder

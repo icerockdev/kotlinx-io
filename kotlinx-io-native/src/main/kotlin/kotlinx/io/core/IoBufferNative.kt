@@ -5,6 +5,7 @@ import kotlinx.io.pool.*
 import platform.posix.memcpy
 import platform.posix.memset
 import platform.posix.size_t
+import kotlinx.io.core.internal.*
 
 @PublishedApi
 internal val MAX_SIZE: size_t = size_t.MAX_VALUE
