@@ -110,10 +110,20 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
         get() = closed
 
     override val totalBytesRead: Long
-        get() = 0L
+        get() = readable.bytesRead
 
     override val totalBytesWritten: Long
-        get() = 0L
+        get() {
+            do {
+                val bytesAppended = readable.bytesAppended
+                val builderSize = writable.size
+
+                if (readable.bytesAppended == bytesAppended &&
+                        writable.size == builderSize) {
+                    return bytesAppended + builderSize
+                }
+            } while (true)
+        }
 
     final override var closedCause: Throwable? = null
         private set

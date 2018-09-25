@@ -37,7 +37,6 @@ expect interface ByteWriteChannel {
      * Number of bytes written to the channel.
      * It is not guaranteed to be atomic so could be updated in the middle of write operation.
      */
-    @Deprecated("Counter is no longer supported")
     val totalBytesWritten: Long
 
     /**
