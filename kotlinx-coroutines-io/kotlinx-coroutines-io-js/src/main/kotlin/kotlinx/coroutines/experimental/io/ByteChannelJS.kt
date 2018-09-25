@@ -1,9 +1,7 @@
 package kotlinx.coroutines.io
 
-import kotlinx.coroutines.*
 import kotlinx.io.core.*
 import org.khronos.webgl.*
-import kotlin.jvm.Volatile
 
 /**
  * Creates buffered channel for asynchronous reading and writing of sequences of bytes.
@@ -73,16 +71,6 @@ actual suspend fun ByteReadChannel.copyTo(dst: ByteWriteChannel, limit: Long): L
 }
 
 internal class ByteChannelJS(initial: IoBuffer, autoFlush: Boolean) : ByteChannelSequentialBase(initial, autoFlush) {
-    private var attachedJob: Job? = null
-
-    override fun attachJob(job: Job) {
-        attachedJob?.cancel()
-        attachedJob = job
-        job.invokeOnCompletion(onCancelling = true) { cause ->
-            attachedJob = null
-            if (cause != null) cancel(cause)
-        }
-    }
     override suspend fun readAvailable(dst: ArrayBuffer, offset: Int, length: Int): Int {
         return if (readable.isEmpty) {
             readAvailableSuspend(dst, offset, length)

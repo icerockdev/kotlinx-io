@@ -1,6 +1,5 @@
 package kotlinx.coroutines.io
 
-import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
 import kotlinx.io.core.*
 import java.nio.ByteBuffer
@@ -9,17 +8,7 @@ import java.nio.ByteBuffer
 class ByteChannelSequentialJVM(initial: IoBuffer, autoFlush: Boolean)
     : ByteChannelSequentialBase(initial, autoFlush) {
 
-    @Volatile
-    private var attachedJob: Job? = null
-
-    override fun attachJob(job: Job) {
-        attachedJob?.cancel()
-        attachedJob = job
-        job.invokeOnCompletion(onCancelling = true) { cause ->
-            attachedJob = null
-            if (cause != null) cancel(cause)
-        }
-    }
+    constructor(autoFlush: Boolean = false) : this(IoBuffer.Empty, autoFlush)
 
     override suspend fun writeAvailable(src: ByteBuffer): Int {
         val rc = tryWriteAvailable(src)
