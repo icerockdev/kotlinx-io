@@ -15,6 +15,7 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
 
     // updated only by reader with the only exception: tryAppendBytes that does it when head is under lock
     // so reader is unable to touch it
+    // TODO now bytesRead getter does touch it so we need to re-check it!!!
     override var headRemaining = 0
 
     override val tailRemaining: Long
@@ -23,10 +24,35 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
     // updated concurrently by both reader and writer
     private val tailRemainingAtomic: AtomicLong = atomic(0L)
 
+    // updated by writer and accessed by both reader and writer
+    // number of bytes appended/written
+    private val transferredCount: AtomicLong = atomic(0L)
+
+    val bytesAppended: Long get() = transferredCount.value
+
+    // TODO can we eliminate the loop here?
+    val bytesRead: Long
+        get() {
+            do {
+                val headRemaining = headRemaining
+                val tailRemaining = tailRemainingAtomic.value
+                val transferredCount = transferredCount.value
+
+                if (headRemaining == this.headRemaining &&
+                    tailRemainingAtomic.value == tailRemaining &&
+                    transferredCount == this.transferredCount.value
+                ) {
+                    return transferredCount - headRemaining - tailRemaining
+                }
+            } while (true)
+        }
+
     init {
         if (initial.canRead()) {
             dummy.casNext(dummy, initial)
-            tailRemainingAtomic.value = initial.remainingAll()
+            val size = initial.remainingAll()
+            tailRemainingAtomic.value = size
+            transferredCount.addAndGet(size)
         } else if (initial !== IoBuffer.Empty) {
             initial.release(pool)
         }
@@ -241,7 +267,7 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
             }
 
             val size = start.remainingAll()
-            this.tailRemainingAtomic.addAndGet(-size)
+            this.tailRemainingAtomic.addAndGet(start.readRemaining - size)
 
             // concat chains
             if (head === dummy) {
@@ -409,6 +435,9 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
                     // so reader will never pass it and therefore will never CAS tail to dummy
                     error("Tail disappeared so reader passed locked chain somehow")
                 }
+
+                transferredCount.addAndGet(chainSize)
+
                 chainTail.markUnlocked() // now we can unlock it since both references are published
                 return
             }
@@ -445,6 +474,8 @@ class ConcurrentPipe(initial: IoBuffer, pool: ObjectPool<IoBuffer>) : ByteReadPa
             } else {
                 tailRemainingAtomic.addAndGet(size.toLong())
             }
+
+            transferredCount.addAndGet(size.toLong())
         } finally {
             tail.markUnlocked()
         }
