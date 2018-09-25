@@ -4,20 +4,27 @@ import kotlin.coroutines.*
 
 internal actual class Condition actual constructor(val predicate: () -> Boolean) {
     private var cont: Continuation<Unit>? = null
+    private var cancellation: Throwable? = null
 
     actual fun check(): Boolean {
-        return predicate()
+        return predicate() || cancellation != null
     }
 
     actual fun signal() {
         val cont = cont
-        if (cont != null && predicate()) {
+        if (cont != null && check()) {
             this.cont = null
-            cont.resume(Unit)
+            val cancellation = cancellation
+            if (cancellation != null) {
+                cont.resumeWithException(cancellation)
+            } else {
+                cont.resume(Unit)
+            }
         }
     }
 
     actual suspend fun await(block: () -> Unit) {
+        checkCancelled()
         if (predicate()) return
 
         return suspendCoroutine { c ->
@@ -25,11 +32,24 @@ internal actual class Condition actual constructor(val predicate: () -> Boolean)
             block()
         }
     }
+
     actual suspend fun await() {
+        checkCancelled()
         if (predicate()) return
 
         return suspendCoroutine { c ->
             cont = c
         }
+    }
+
+    actual fun cancel(cause: Throwable) {
+        if (cancellation == null) {
+            cancellation = cause
+            signal()
+        }
+    }
+
+    private fun checkCancelled() {
+        cancellation?.let { throw it }
     }
 }
