@@ -16,7 +16,7 @@ internal actual class Condition actual constructor(val predicate: () -> Boolean)
             this.cont = null
             val cancellation = cancellation
             if (cancellation != null) {
-                cont.resumeExceptionally(cancellation)
+                cont.resumeWith(Result.failure(cancellation))
             } else {
                 cont.resume(Unit)
             }

@@ -990,6 +990,66 @@ actual class IoBuffer internal constructor(
         throw UnsupportedOperationException("close for buffer view is not supported")
     }
 
+
+    @DangerousInternalIoApi
+    actual fun casNext(oldValue: IoBuffer?, newValue: IoBuffer): Boolean {
+        if (next == oldValue) {
+            next = newValue
+            return true
+        }
+        return false
+    }
+
+    @DangerousInternalIoApi
+    actual fun trySetNext(newValue: IoBuffer?): Boolean {
+        if (next == null) {
+            next = newValue
+            return true
+        }
+        return false
+    }
+
+    actual fun getAndSetNext(dummy: IoBuffer?): IoBuffer? {
+        val old = next
+        next = dummy
+        return old
+    }
+
+    private var lock = false
+    private var version = 0
+
+    /**
+     * If the chain is marked as locked. Useful for synchronization
+     */
+    actual val locked: Boolean
+        get() = lock
+
+    actual val lockVersion: Int
+        get() = version
+
+    actual fun markLocked(): Boolean {
+        if (lock) return false
+
+        version++
+        lock = true
+
+        return true
+    }
+
+    actual fun markLocked(v: Int): Boolean {
+        if (lock || version != v) return false
+
+        version++
+        lock = true
+
+        return true
+    }
+
+    actual fun markUnlocked() {
+        version++
+        lock = false
+    }
+
     @Suppress("NOTHING_TO_INLINE")
     private inline fun swap(s: Short): Short = (((s.toInt() and 0xff) shl 8) or ((s.toInt() and 0xffff) ushr 8)).toShort()
     @Suppress("NOTHING_TO_INLINE")
@@ -1037,6 +1097,8 @@ actual class IoBuffer internal constructor(
         }
 
         actual val EmptyPool: ObjectPool<IoBuffer> = EmptyBufferPoolImpl
+
+        internal actual fun makeDummy(): IoBuffer = IoBuffer(EmptyBuffer, 0, null)
     }
 }
 
