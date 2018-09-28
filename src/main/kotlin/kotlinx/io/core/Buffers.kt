@@ -28,13 +28,16 @@ expect class IoBuffer : Input, Output {
     @DangerousInternalIoApi
     fun trySetNext(newValue: IoBuffer?): Boolean
 
+    @DangerousInternalIoApi
     fun getAndSetNext(dummy: IoBuffer?): IoBuffer?
 
     /**
      * If the chain is marked as locked. Useful for synchronization
      */
+    @DangerousInternalIoApi
     val locked: Boolean
 
+    @DangerousInternalIoApi
     val lockVersion: Int
 
     /**
@@ -218,8 +221,13 @@ expect class IoBuffer : Input, Output {
 
     final override fun flush()
 
+    @DangerousInternalIoApi
     fun markLocked(): Boolean
+
+    @DangerousInternalIoApi
     fun markLocked(v: Int): Boolean
+
+    @DangerousInternalIoApi
     fun markUnlocked()
 
     companion object {
@@ -297,6 +305,6 @@ internal tailrec fun IoBuffer.isEmpty(): Boolean {
 }
 
 @Suppress("NOTHING_TO_INLINE")
-inline fun Long.coerceAtMostMaxInt(): Int = minOf(this, Int.MAX_VALUE.toLong()).toInt()
+internal inline fun Long.coerceAtMostMaxInt(): Int = minOf(this, Int.MAX_VALUE.toLong()).toInt()
 
 class BufferLimitExceededException(message: String) : Exception(message)

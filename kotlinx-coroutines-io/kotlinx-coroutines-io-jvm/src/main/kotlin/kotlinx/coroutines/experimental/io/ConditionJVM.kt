@@ -16,12 +16,14 @@ internal actual class Condition actual constructor(private val predicate: () -> 
         return failure != null || predicate()
     }
 
-    private fun checkOrFail(): Boolean {
+    @PublishedApi
+    internal fun checkOrFail(): Boolean {
         checkFailure()
         return predicate()
     }
 
-    private fun checkFailure() {
+    @PublishedApi
+    internal fun checkFailure() {
         failure?.let { throw it }
     }
 
@@ -48,8 +50,8 @@ internal actual class Condition actual constructor(private val predicate: () -> 
         if (checkOrFail()) return
 
         return suspendCoroutineUninterceptedOrReturn { c ->
-            if (!updater.compareAndSet(this, null, c)) concurrentAwaitIsNotSupported()
-            if (check() && updater.compareAndSet(this, c, null)) {
+            if (!compareAndSet(null, c)) concurrentAwaitIsNotSupported()
+            if (check() && compareAndSet(c, null)) {
                 checkFailure()
                 return@suspendCoroutineUninterceptedOrReturn Unit
             }
@@ -62,8 +64,14 @@ internal actual class Condition actual constructor(private val predicate: () -> 
         return await { }
     }
 
-    private fun concurrentAwaitIsNotSupported(): Nothing {
+    @PublishedApi
+    internal fun concurrentAwaitIsNotSupported(): Nothing {
         throw IllegalStateException("Concurrent await is not supported")
+    }
+
+    @PublishedApi
+    internal fun compareAndSet(expected: Continuation<Unit>?, newValue: Continuation<Unit>?): Boolean {
+        return updater.compareAndSet(this, expected, newValue)
     }
 
     override fun toString(): String {

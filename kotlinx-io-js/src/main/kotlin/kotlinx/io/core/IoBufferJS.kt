@@ -1178,6 +1178,7 @@ actual class IoBuffer internal constructor(
         return false
     }
 
+    @DangerousInternalIoApi
     actual fun getAndSetNext(dummy: IoBuffer?): IoBuffer? {
         val old = next
         next = dummy
@@ -1190,12 +1191,15 @@ actual class IoBuffer internal constructor(
     /**
      * If the chain is marked as locked. Useful for synchronization
      */
+    @DangerousInternalIoApi
     actual val locked: Boolean
         get() = lock
 
+    @DangerousInternalIoApi
     actual val lockVersion: Int
         get() = version
 
+    @DangerousInternalIoApi
     actual fun markLocked(): Boolean {
         if (lock) return false
 
@@ -1205,6 +1209,7 @@ actual class IoBuffer internal constructor(
         return true
     }
 
+    @DangerousInternalIoApi
     actual fun markLocked(v: Int): Boolean {
         if (lock || version != v) return false
 
@@ -1214,6 +1219,7 @@ actual class IoBuffer internal constructor(
         return true
     }
 
+    @DangerousInternalIoApi
     actual fun markUnlocked() {
         version++
         lock = false
