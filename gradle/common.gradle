@@ -1,0 +1,6 @@
+compileKotlinCommon {
+    kotlinOptions.freeCompilerArgs += ['-Xuse-experimental=kotlin.Experimental,kotlinx.io.core.internal.DangerousInternalIoApi']
+}
+compileTestKotlinCommon {
+    kotlinOptions.freeCompilerArgs += ['-Xuse-experimental=kotlin.Experimental,kotlinx.io.core.internal.DangerousInternalIoApi']
+}
