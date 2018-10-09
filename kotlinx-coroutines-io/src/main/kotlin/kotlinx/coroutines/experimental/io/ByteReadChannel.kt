@@ -205,6 +205,12 @@ suspend fun ByteReadChannel.readFully(dst: ByteArray) = readFully(dst, 0, dst.si
 
 expect suspend fun ByteReadChannel.joinTo(dst: ByteWriteChannel, closeOnEnd: Boolean)
 
+@Deprecated("flushOnEnd is not supported anymore")
+suspend fun ByteReadChannel.joinTo(dst: ByteWriteChannel, closeOnEnd: Boolean, flushOnEnd: Boolean) {
+    if (!flushOnEnd) throw UnsupportedOperationException()
+    return joinTo(dst, closeOnEnd)
+}
+
 /**
  * Reads up to [limit] bytes from receiver channel and writes them to [dst] channel.
  * Closes [dst] channel if fails to read or write with cause exception.
