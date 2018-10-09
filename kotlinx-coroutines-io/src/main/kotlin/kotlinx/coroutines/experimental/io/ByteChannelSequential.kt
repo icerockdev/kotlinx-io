@@ -258,11 +258,11 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
     }
 
     override suspend fun readByte(): Byte {
-        return if (readable.isNotEmpty) {
-            readable.readByte().also { afterRead() }
-        } else {
-            readByteSlow()
+        if (readable.hasFastpathBytes(1)) {
+            return fastPathRead { readByte() }
         }
+
+        return readByteSlow()
     }
 
     private fun checkClosed(n: Int) {
@@ -281,11 +281,11 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
     }
 
     override suspend fun readShort(): Short {
-        return if (readable.hasFastpathBytes(2)) {
-            readable.readShort().also { afterRead() }
-        } else {
-            readShortSlow()
+        if (readable.hasFastpathBytes(2)) {
+            return fastPathRead { readShort() }
         }
+
+        return readShortSlow()
     }
 
     private suspend fun readShortSlow(): Short {
@@ -298,11 +298,11 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
     }
 
     override suspend fun readInt(): Int {
-        return if (readable.hasFastpathBytes(4)) {
-            readable.readInt().also { afterRead() }
-        } else {
-            readIntSlow()
+        if (readable.hasFastpathBytes(4)) {
+            return fastPathRead { readInt() }
         }
+
+        return readIntSlow()
     }
 
     private suspend fun readIntSlow(): Int {
@@ -310,11 +310,11 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
     }
 
     override suspend fun readLong(): Long {
-        return if (readable.hasFastpathBytes(8)) {
-            readable.readLong().also { afterRead() }
-        } else {
-            readLongSlow()
+        if (readable.hasFastpathBytes(8)) {
+            return fastPathRead { readLong() }
         }
+
+        return readLongSlow()
     }
 
     private suspend fun readLongSlow(): Long {
@@ -322,11 +322,11 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
     }
 
     override suspend fun readFloat(): Float {
-        return if (readable.hasFastpathBytes(4)) {
-            readable.readFloat().also { afterRead() }
-        } else {
-            readFloatSlow()
+        if (readable.hasFastpathBytes(4)) {
+            return fastPathRead { readFloat() }
         }
+
+        return readFloatSlow()
     }
 
     private suspend fun readFloatSlow(): Float {
@@ -334,11 +334,11 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
     }
 
     override suspend fun readDouble(): Double {
-        return if (readable.hasFastpathBytes(8)) {
-            readable.readDouble().also { afterRead() }
-        } else {
-            readDoubleSlow()
+        if (readable.hasFastpathBytes(8)) {
+            return fastPathRead { readDouble() }
         }
+
+        return readDoubleSlow()
     }
 
     private suspend fun readDoubleSlow(): Double {
@@ -674,6 +674,12 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
         } while (true)
     }
 
+    private inline fun <R> fastPathRead(block: ByteReadPacketBase.() -> R): R {
+        val v = block(readable)
+        afterRead()
+        return v
+    }
+
     private suspend fun writeAvailableSuspend(src: IoBuffer): Int {
         awaitForWriteSpace(1)
         return writeAvailable(src)
@@ -686,12 +692,22 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
 
     protected fun afterWrite() {
         if (closed) {
-            writable.release()
-            throw closedCause ?: ClosedWriteChannelException("Channel is already closed")
+            afterWriteClosed()
         }
-        if (autoFlush || availableForWrite == 0) {
+        if (autoFlush || hasNoSpace()) {
             flush()
         }
+    }
+
+    private fun hasNoSpace(): Boolean {
+        val readable = readable.remaining.toInt()
+        if (readable >= 4088) return true
+        return readable + writable.size >= 4088
+    }
+
+    private fun afterWriteClosed(): Nothing {
+        writable.release()
+        throw closedCause ?: ClosedWriteChannelException("Channel is already closed")
     }
 
     /**
@@ -699,7 +715,13 @@ abstract class ByteChannelSequentialBase(initial: IoBuffer, override val autoFlu
      */
     protected suspend fun awaitFreeSpace() {
         afterWrite()
+        if (notFull.check()) return
+        return awaitFreeSpaceSuspend()
+    }
+
+    private suspend fun awaitFreeSpaceSuspend() {
         return notFull.await { flush() }
+//        return notFull.await()
     }
 
     internal suspend fun awaitForWriteSpace(n: Int) {
