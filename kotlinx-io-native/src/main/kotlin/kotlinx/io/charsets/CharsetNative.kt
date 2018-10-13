@@ -190,6 +190,7 @@ private data class CharsetDecoderImpl(private val charset: Charset) : CharsetDec
 
 actual val CharsetDecoder.charset: Charset get() = _charset
 
+@kotlin.native.SharedImmutable
 private val platformUtf16: String by lazy { if (ByteOrder.nativeOrder() == ByteOrder.BIG_ENDIAN) "UTF-16BE" else "UTF-16LE" }
 
 actual fun CharsetDecoder.decode(input: Input, dst: Appendable, max: Int): Int {

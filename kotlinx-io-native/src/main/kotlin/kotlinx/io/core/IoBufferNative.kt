@@ -7,6 +7,7 @@ import platform.posix.memset
 import platform.posix.size_t
 
 @PublishedApi
+@kotlin.native.SharedImmutable
 internal val MAX_SIZE: size_t = size_t.MAX_VALUE
 
 actual class IoBuffer internal constructor(
