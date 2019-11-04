@@ -69,6 +69,7 @@ allprojects {
 
     apply plugin: 'kotlin-multiplatform'
     apply plugin: 'kotlinx-atomicfu'
+    apply plugin: 'maven-publish'
 
     apply from: rootProject.file("gradle/utility.gradle")
 
@@ -140,6 +141,20 @@ allprojects {
                         configure(c.create("${name}")) {
                             defFile filePath
                         }
+                    }
+                }
+            }
+        }
+
+        publishing {
+            repositories {
+                maven {
+                    name = "bintray"
+                    url = "https://api.bintray.com/maven/icerockdev/kotlin-libs/kotlin-io/;publish=1"
+
+                    credentials {
+                        username = System.getProperty("BINTRAY_USER")
+                        password = System.getProperty("BINTRAY_KEY")
                     }
                 }
             }
